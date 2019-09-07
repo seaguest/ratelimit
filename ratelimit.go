@@ -41,36 +41,27 @@ local fresh_permits = required_permits - stored_permits_to_spend;
 local wait_micros = fresh_permits * stable_interval_micros
 
 redis.replicate_commands()
-redis.call('hset', key, 'stored_permits', stored_permits - stored_permits_to_spend)
-redis.call('hset', key, 'next_free_ticket_micros', next_free_ticket_micros + wait_micros)
-redis.call('expire', key, duration*5)
+redis.call('expire', key, duration*2)
+
+if moment_available == now_micros then
+	redis.call('hset', key, 'next_free_ticket_micros', next_free_ticket_micros + wait_micros)
+	redis.call('hset', key, 'stored_permits', stored_permits - stored_permits_to_spend)
+end
 
 -- return wait time for available token
-return moment_available - now_micros`
+return moment_available - now_micros
+`
 
 var (
 	rlScript *redis.Script
 )
 
 func init() {
-	rlScript = redis.NewScript(1, script)
+	rlScript = redis.NewScript(3, script)
 }
 
-/*
-	param:
-		key:		redis key
-		duration:	rate limit duration
-		limit:		limited number for duration
-		requires:	required tokens
-
-	usage:
-		// 10 per 1s
-		Take("key", 1, 10, 1, pool)
-
-		// 600 per 60s
-		Take("key", 60, 600, 1, pool)
-*/
-
+// defined limit token created in duration time for key.
+// usage: take("key", 60, 600, 1, pool) means limited to 600 per 60s.
 func Take(key string, duration, limit, requires int, pool *redis.Pool) (int64, error) {
 	c := pool.Get()
 	defer c.Close()

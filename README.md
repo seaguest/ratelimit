@@ -1,9 +1,8 @@
 # ratelimit
-A ratelimit based on redis
 
-TODO: Integrate mem + redis to reduce redis's load.
+A distributed ratelimiter based on redis
 
-Usage:
+## Usage
 
 
 ``` 
