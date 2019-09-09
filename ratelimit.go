@@ -1,6 +1,8 @@
 package ratelimit
 
 import (
+	"time"
+
 	"github.com/gomodule/redigo/redis"
 )
 
@@ -44,8 +46,8 @@ redis.replicate_commands()
 redis.call('expire', key, duration*2)
 
 if moment_available == now_micros then
-	redis.call('hset', key, 'next_free_ticket_micros', next_free_ticket_micros + wait_micros)
-	redis.call('hset', key, 'stored_permits', stored_permits - stored_permits_to_spend)
+    redis.call('hset', key, 'next_free_ticket_micros', next_free_ticket_micros + wait_micros)
+    redis.call('hset', key, 'stored_permits', stored_permits - stored_permits_to_spend)
 end
 
 -- return wait time for available token
@@ -54,15 +56,49 @@ return moment_available - now_micros
 
 var (
 	rlScript *redis.Script
+	pool     *redis.Pool
 )
 
-func init() {
+func dial(network, address, password string) (redis.Conn, error) {
+	c, err := redis.Dial(network, address)
+	if err != nil {
+		return nil, err
+	}
+	if password != "" {
+		if _, err := c.Do("AUTH", password); err != nil {
+			c.Close()
+			return nil, err
+		}
+	}
+	return c, err
+}
+
+func Init(address, password string) {
 	rlScript = redis.NewScript(3, script)
+
+	pool = &redis.Pool{
+		MaxIdle:     200,
+		MaxActive:   1000,
+		Wait:        false,
+		IdleTimeout: 240 * time.Second,
+		TestOnBorrow: func(c redis.Conn, t time.Time) error {
+			_, err := c.Do("PING")
+			return err
+		},
+		Dial: func() (redis.Conn, error) {
+			return dial("tcp", address, password)
+		},
+	}
+}
+
+// take requires token at a limit per duration for key.
+func Take(key string, duration, limit, requires int) (int64, error) {
+	return take(key, duration, limit, requires, pool)
 }
 
 // defined limit token created in duration time for key.
 // usage: take("key", 60, 600, 1, pool) means limited to 600 per 60s.
-func Take(key string, duration, limit, requires int, pool *redis.Pool) (int64, error) {
+func take(key string, duration, limit, requires int, pool *redis.Pool) (int64, error) {
 	c := pool.Get()
 	defer c.Close()
 

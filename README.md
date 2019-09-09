@@ -1,6 +1,6 @@
 # ratelimit
 
-A distributed ratelimiter based on redis
+A distributed ratelimiter based on lua + redis
 
 ## Usage
 
@@ -13,7 +13,9 @@ import (
 )
 
 func main() {
-		ratelimit.Take("key", 1, 10, 1, pool)
+	ratelimit.Init("127.0.0.1:6379", "")
+
+	ratelimit.Take("1", 60, 100000, 1)
 }
 
 ```
